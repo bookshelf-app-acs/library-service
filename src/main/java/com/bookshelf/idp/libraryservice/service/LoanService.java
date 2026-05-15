@@ -1,56 +1,47 @@
 package com.bookshelf.idp.libraryservice.service;
 
+import com.bookshelf.idp.libraryservice.client.DatabaseServiceClient;
 import com.bookshelf.idp.libraryservice.dto.*;
-import com.bookshelf.idp.libraryservice.entity.*;
 import com.bookshelf.idp.libraryservice.exception.BadRequestException;
 import com.bookshelf.idp.libraryservice.exception.NotFoundException;
-import com.bookshelf.idp.libraryservice.repository.*;
+import com.bookshelf.idp.libraryservice.model.*;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
-@Transactional
 public class LoanService {
 
-    private final LoanRepository loanRepository;
-    private final BookRepository bookRepository;
-    private final UserRepository userRepository;
-    private final ReservationRepository reservationRepository;
+    private final DatabaseServiceClient dbClient;
     private final NotificationService notificationService;
 
-    public LoanService(LoanRepository loanRepository, BookRepository bookRepository,
-                       UserRepository userRepository, ReservationRepository reservationRepository,
-                       NotificationService notificationService) {
-        this.loanRepository = loanRepository;
-        this.bookRepository = bookRepository;
-        this.userRepository = userRepository;
-        this.reservationRepository = reservationRepository;
+    public LoanService(DatabaseServiceClient dbClient, NotificationService notificationService) {
+        this.dbClient = dbClient;
         this.notificationService = notificationService;
     }
 
     public LoanResponseDto create(LoanRequestDto dto, String email) {
-        User user = userRepository.findByEmail(email)
+        UserModel user = dbClient.findUserByEmail(email)
                 .orElseThrow(() -> new NotFoundException("User not found"));
-        Book book = bookRepository.findById(dto.getBookId())
+        BookModel book = dbClient.findBookById(dto.getBookId())
                 .orElseThrow(() -> new NotFoundException("Book not found"));
 
         if (book.getAvailableCopies() <= 0) throw new BadRequestException("Book is not available");
 
         book.setAvailableCopies(book.getAvailableCopies() - 1);
-        bookRepository.save(book);
+        dbClient.updateBook(book.getId(), book);
 
-        Loan loan = new Loan();
+        LoanModel loan = new LoanModel();
         loan.setUser(user);
         loan.setBook(book);
         loan.setLoanDate(LocalDate.now());
         loan.setDueDate(LocalDate.now().plusDays(14));
         loan.setStatus(LoanStatus.ACTIVE);
 
-        LoanResponseDto response = toDto(loanRepository.save(loan));
+        LoanModel saved = dbClient.saveLoan(loan);
 
         notificationService.sendNotification(
                 user.getId(),
@@ -59,27 +50,27 @@ public class LoanService {
                 book.getId()
         );
 
-        return response;
+        return toDto(saved);
     }
 
     public LoanResponseDto returnBook(UUID loanId) {
-        Loan loan = loanRepository.findById(loanId)
+        LoanModel loan = dbClient.findLoanById(loanId)
                 .orElseThrow(() -> new NotFoundException("Loan not found"));
 
         if (loan.getStatus() == LoanStatus.RETURNED) throw new BadRequestException("Book already returned");
 
         loan.setReturnDate(LocalDate.now());
         loan.setStatus(LoanStatus.RETURNED);
+        dbClient.updateLoan(loanId, loan);
 
-        Book book = loan.getBook();
+        BookModel book = loan.getBook();
         book.setAvailableCopies(book.getAvailableCopies() + 1);
-        bookRepository.save(book);
+        dbClient.updateBook(book.getId(), book);
 
-        reservationRepository.findFirstByBookIdAndStatusOrderByReservationDateAsc(
-                        book.getId(), ReservationStatus.PENDING)
+        dbClient.findFirstPendingReservationByBookId(book.getId())
                 .ifPresent(reservation -> {
                     reservation.setStatus(ReservationStatus.FULFILLED);
-                    reservationRepository.save(reservation);
+                    dbClient.updateReservation(reservation.getId(), reservation);
                     notificationService.sendNotification(
                             reservation.getUser().getId(),
                             "RESERVATION_AVAILABLE",
@@ -88,20 +79,20 @@ public class LoanService {
                     );
                 });
 
-        return toDto(loanRepository.save(loan));
+        return toDto(loan);
     }
 
     public List<LoanResponseDto> getMyLoans(String email) {
-        User user = userRepository.findByEmail(email)
+        UserModel user = dbClient.findUserByEmail(email)
                 .orElseThrow(() -> new NotFoundException("User not found"));
-        return loanRepository.findByUserId(user.getId()).stream().map(this::toDto).collect(Collectors.toList());
+        return dbClient.findLoansByUserId(user.getId()).stream().map(this::toDto).collect(Collectors.toList());
     }
 
     public List<LoanResponseDto> getAll() {
-        return loanRepository.findAll().stream().map(this::toDto).collect(Collectors.toList());
+        return dbClient.findAllLoans().stream().map(this::toDto).collect(Collectors.toList());
     }
 
-    private LoanResponseDto toDto(Loan loan) {
+    private LoanResponseDto toDto(LoanModel loan) {
         LoanResponseDto dto = new LoanResponseDto();
         dto.setId(loan.getId());
         dto.setLoanDate(loan.getLoanDate());
@@ -109,29 +100,26 @@ public class LoanService {
         dto.setReturnDate(loan.getReturnDate());
         dto.setStatus(loan.getStatus());
 
+        BookModel b = loan.getBook();
         BookResponseDto bookDto = new BookResponseDto();
-        bookDto.setId(loan.getBook().getId());
-        bookDto.setTitle(loan.getBook().getTitle());
-        bookDto.setIsbn(loan.getBook().getIsbn());
-        bookDto.setDescription(loan.getBook().getDescription());
-        bookDto.setAvailableCopies(loan.getBook().getAvailableCopies());
-        bookDto.setTotalCopies(loan.getBook().getTotalCopies());
-        bookDto.setImageUrl(loan.getBook().getImageUrl());
-        bookDto.setAuthors(loan.getBook().getAuthors().stream()
-                .map(a -> {
-                    AuthorResponseDto authorDto = new AuthorResponseDto();
-                    authorDto.setId(a.getId());
-                    authorDto.setFirstName(a.getFirstName());
-                    authorDto.setLastName(a.getLastName());
-                    return authorDto;
-                }).collect(Collectors.toList()));
+        bookDto.setId(b.getId());
+        bookDto.setTitle(b.getTitle());
+        bookDto.setIsbn(b.getIsbn());
+        bookDto.setDescription(b.getDescription());
+        bookDto.setAvailableCopies(b.getAvailableCopies());
+        bookDto.setTotalCopies(b.getTotalCopies());
+        bookDto.setImageUrl(b.getImageUrl());
+        bookDto.setAuthors(b.getAuthors() == null ? List.of() : b.getAuthors().stream()
+                .map(a -> new AuthorResponseDto(a.getId(), a.getFirstName(), a.getLastName()))
+                .collect(Collectors.toList()));
         dto.setBook(bookDto);
 
+        UserModel u = loan.getUser();
         UserResponseDto userDto = new UserResponseDto();
-        userDto.setId(loan.getUser().getId());
-        userDto.setName(loan.getUser().getName());
-        userDto.setEmail(loan.getUser().getEmail());
-        userDto.setRole(loan.getUser().getRole().name());
+        userDto.setId(u.getId());
+        userDto.setName(u.getName());
+        userDto.setEmail(u.getEmail());
+        userDto.setRole(u.getRole());
         dto.setUser(userDto);
 
         return dto;

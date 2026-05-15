@@ -1,6 +1,6 @@
 package com.bookshelf.idp.libraryservice.dto;
 
-import com.bookshelf.idp.libraryservice.entity.LoanStatus;
+import com.bookshelf.idp.libraryservice.model.LoanStatus;
 import lombok.*;
 import java.time.LocalDate;
 import java.util.UUID;

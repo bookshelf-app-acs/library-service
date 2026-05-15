@@ -1,6 +1,7 @@
 package com.bookshelf.idp.libraryservice.config.security;
 
-import com.bookshelf.idp.libraryservice.repository.UserRepository;
+import com.bookshelf.idp.libraryservice.client.DatabaseServiceClient;
+import com.bookshelf.idp.libraryservice.model.UserModel;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.*;
 import org.springframework.stereotype.Service;
@@ -9,20 +10,20 @@ import java.util.List;
 @Service
 public class CustomUserDetailsService implements UserDetailsService {
 
-    private final UserRepository userRepository;
+    private final DatabaseServiceClient dbClient;
 
-    public CustomUserDetailsService(UserRepository userRepository) {
-        this.userRepository = userRepository;
+    public CustomUserDetailsService(DatabaseServiceClient dbClient) {
+        this.dbClient = dbClient;
     }
 
     @Override
     public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
-        return userRepository.findByEmail(email)
-                .map(user -> new User(
-                        user.getEmail(),
-                        user.getPassword(),
-                        List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name()))
-                ))
+        UserModel user = dbClient.findUserByEmail(email)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+        return new User(
+                user.getEmail(),
+                user.getPassword(),
+                List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole()))
+        );
     }
 }

@@ -1,6 +1,6 @@
 package com.bookshelf.idp.libraryservice.dto;
 
-import com.bookshelf.idp.libraryservice.entity.ReservationStatus;
+import com.bookshelf.idp.libraryservice.model.ReservationStatus;
 import lombok.*;
 import java.time.LocalDate;
 import java.util.UUID;

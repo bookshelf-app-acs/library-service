@@ -1,58 +1,54 @@
 package com.bookshelf.idp.libraryservice.service;
 
+import com.bookshelf.idp.libraryservice.client.DatabaseServiceClient;
 import com.bookshelf.idp.libraryservice.dto.*;
-import com.bookshelf.idp.libraryservice.entity.Author;
-import com.bookshelf.idp.libraryservice.entity.Book;
 import com.bookshelf.idp.libraryservice.exception.NotFoundException;
-import com.bookshelf.idp.libraryservice.repository.AuthorRepository;
-import com.bookshelf.idp.libraryservice.repository.BookRepository;
+import com.bookshelf.idp.libraryservice.model.AuthorModel;
+import com.bookshelf.idp.libraryservice.model.BookModel;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
-@Transactional
 public class BookService {
 
-    private final BookRepository bookRepository;
-    private final AuthorRepository authorRepository;
+    private final DatabaseServiceClient dbClient;
 
-    public BookService(BookRepository bookRepository, AuthorRepository authorRepository) {
-        this.bookRepository = bookRepository;
-        this.authorRepository = authorRepository;
+    public BookService(DatabaseServiceClient dbClient) {
+        this.dbClient = dbClient;
     }
 
     public List<BookResponseDto> getAll() {
-        return bookRepository.findAll().stream().map(this::toDto).collect(Collectors.toList());
+        return dbClient.findAllBooks().stream().map(this::toDto).collect(Collectors.toList());
     }
 
     public BookResponseDto getById(UUID id) {
-        return bookRepository.findById(id)
+        return dbClient.findBookById(id)
                 .map(this::toDto)
                 .orElseThrow(() -> new NotFoundException("Book not found"));
     }
 
     public List<BookResponseDto> search(String title) {
-        return bookRepository.findByTitle(title).stream().map(this::toDto).collect(Collectors.toList());
+        return dbClient.findBooksByTitle(title).stream().map(this::toDto).collect(Collectors.toList());
     }
 
     public List<BookResponseDto> getAvailable() {
-        return bookRepository.findByAvailableCopiesGreaterThan(0).stream().map(this::toDto).collect(Collectors.toList());
+        return dbClient.findAvailableBooks().stream().map(this::toDto).collect(Collectors.toList());
     }
 
     public List<BookResponseDto> getByAuthor(String lastName) {
-        return bookRepository.findByAuthorLastName(lastName).stream().map(this::toDto).collect(Collectors.toList());
+        return dbClient.findBooksByAuthorLastName(lastName).stream().map(this::toDto).collect(Collectors.toList());
     }
 
     public BookResponseDto create(BookRequestDto dto) {
-        List<Author> authors = dto.getAuthorIds().stream()
-                .map(id -> authorRepository.findById(id)
+        List<AuthorModel> authors = dto.getAuthorIds().stream()
+                .map(id -> dbClient.findAuthorById(id)
                         .orElseThrow(() -> new NotFoundException("Author not found: " + id)))
                 .collect(Collectors.toList());
 
-        Book book = new Book();
+        BookModel book = new BookModel();
         book.setTitle(dto.getTitle());
         book.setIsbn(dto.getIsbn());
         book.setDescription(dto.getDescription());
@@ -60,35 +56,35 @@ public class BookService {
         book.setTotalCopies(dto.getTotalCopies());
         book.setAvailableCopies(dto.getTotalCopies());
         book.setAuthors(authors);
-        return toDto(bookRepository.save(book));
+        return toDto(dbClient.saveBook(book));
     }
 
     public BookResponseDto update(UUID id, BookRequestDto dto) {
-        Book book = bookRepository.findById(id)
+        BookModel book = dbClient.findBookById(id)
                 .orElseThrow(() -> new NotFoundException("Book not found"));
 
-        List<Author> authors = dto.getAuthorIds().stream()
-                .map(authorId -> authorRepository.findById(authorId)
+        List<AuthorModel> authors = dto.getAuthorIds().stream()
+                .map(authorId -> dbClient.findAuthorById(authorId)
                         .orElseThrow(() -> new NotFoundException("Author not found: " + authorId)))
                 .collect(Collectors.toList());
 
+        int diff = dto.getTotalCopies() - book.getTotalCopies();
         book.setTitle(dto.getTitle());
         book.setIsbn(dto.getIsbn());
         book.setImageUrl(dto.getImageUrl());
         book.setDescription(dto.getDescription());
-        int diff = dto.getTotalCopies() - book.getTotalCopies();
         book.setTotalCopies(dto.getTotalCopies());
         book.setAvailableCopies(book.getAvailableCopies() + diff);
         book.setAuthors(authors);
-        return toDto(bookRepository.save(book));
+        return toDto(dbClient.updateBook(id, book));
     }
 
     public void delete(UUID id) {
-        if (!bookRepository.existsById(id)) throw new NotFoundException("Book not found");
-        bookRepository.deleteById(id);
+        if (!dbClient.bookExistsById(id)) throw new NotFoundException("Book not found");
+        dbClient.deleteBook(id);
     }
 
-    private BookResponseDto toDto(Book book) {
+    private BookResponseDto toDto(BookModel book) {
         BookResponseDto dto = new BookResponseDto();
         dto.setId(book.getId());
         dto.setTitle(book.getTitle());
@@ -97,14 +93,9 @@ public class BookService {
         dto.setImageUrl(book.getImageUrl());
         dto.setTotalCopies(book.getTotalCopies());
         dto.setAvailableCopies(book.getAvailableCopies());
-        dto.setAuthors(book.getAuthors().stream()
-                .map(a -> {
-                    AuthorResponseDto authorDto = new AuthorResponseDto();
-                    authorDto.setId(a.getId());
-                    authorDto.setFirstName(a.getFirstName());
-                    authorDto.setLastName(a.getLastName());
-                    return authorDto;
-                }).collect(Collectors.toList()));
+        dto.setAuthors(book.getAuthors() == null ? List.of() : book.getAuthors().stream()
+                .map(a -> new AuthorResponseDto(a.getId(), a.getFirstName(), a.getLastName()))
+                .collect(Collectors.toList()));
         return dto;
     }
 }

@@ -1,7 +1,8 @@
 package com.bookshelf.idp.libraryservice.config.security;
 
-import com.bookshelf.idp.libraryservice.entity.*;
-import com.bookshelf.idp.libraryservice.repository.*;
+import com.bookshelf.idp.libraryservice.client.DatabaseServiceClient;
+import com.bookshelf.idp.libraryservice.model.AuthorModel;
+import com.bookshelf.idp.libraryservice.model.BookModel;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
@@ -10,36 +11,34 @@ import java.util.List;
 @Component
 public class ApplicationInitializer implements ApplicationRunner {
 
-    private final UserRepository userRepository;
-    private final AuthorRepository authorRepository;
-    private final BookRepository bookRepository;
+    private final DatabaseServiceClient dbClient;
 
-    public ApplicationInitializer(UserRepository userRepository, AuthorRepository authorRepository,
-                                  BookRepository bookRepository) {
-        this.userRepository = userRepository;
-        this.authorRepository = authorRepository;
-        this.bookRepository = bookRepository;
+    public ApplicationInitializer(DatabaseServiceClient dbClient) {
+        this.dbClient = dbClient;
     }
 
     @Override
     public void run(ApplicationArguments args) {
-        if (authorRepository.findByFirstNameAndLastName("Stephen", "King").isEmpty()) {
-            Author king = new Author();
-            king.setFirstName("Stephen");
-            king.setLastName("King");
-            authorRepository.save(king);
-        }
+        try {
+            AuthorModel king = dbClient.findAuthorByName("Stephen", "King").orElseGet(() -> {
+                AuthorModel a = new AuthorModel();
+                a.setFirstName("Stephen");
+                a.setLastName("King");
+                return dbClient.saveAuthor(a);
+            });
 
-        if (bookRepository.findByTitle("The Shining").isEmpty()) {
-            Author king = authorRepository.findByFirstNameAndLastName("Stephen", "King").orElseThrow();
-            Book book = new Book();
-            book.setTitle("The Shining");
-            book.setDescription("A horror novel");
-            book.setIsbn("978-0-385-12167-5");
-            book.setTotalCopies(3);
-            book.setAvailableCopies(3);
-            book.setAuthors(List.of(king));
-            bookRepository.save(book);
+            if (dbClient.findBooksByTitle("The Shining").isEmpty()) {
+                BookModel book = new BookModel();
+                book.setTitle("The Shining");
+                book.setDescription("A horror novel");
+                book.setIsbn("978-0-385-12167-5");
+                book.setTotalCopies(3);
+                book.setAvailableCopies(3);
+                book.setAuthors(List.of(king));
+                dbClient.saveBook(book);
+            }
+        } catch (Exception e) {
+            System.out.println("Database service not available, skipping initialization: " + e.getMessage());
         }
     }
 }
