@@ -23,8 +23,11 @@ public class BookController {
     }
 
     @GetMapping
-    public ResponseEntity<List<BookResponseDto>> getAll() {
-        return new ResponseEntity<>(bookService.getAll(), HttpStatus.OK);
+    public ResponseEntity<List<BookResponseDto>> getAll(
+            @RequestParam(required = false) String title,
+            @RequestParam(required = false) UUID authorId,
+            @RequestParam(required = false) Boolean available) {
+        return new ResponseEntity<>(bookService.findBooks(title, authorId, available), HttpStatus.OK);
     }
 
     @GetMapping("/{id}")

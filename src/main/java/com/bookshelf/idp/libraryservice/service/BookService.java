@@ -24,6 +24,19 @@ public class BookService {
         return dbClient.findAllBooks().stream().map(this::toDto).collect(Collectors.toList());
     }
 
+    public List<BookResponseDto> findBooks(String title, UUID authorId, Boolean available) {
+        return dbClient.findAllBooks().stream()
+                .filter(b -> title == null || title.isBlank()
+                        || b.getTitle().toLowerCase().contains(title.toLowerCase()))
+                .filter(b -> authorId == null
+                        || (b.getAuthors() != null && b.getAuthors().stream()
+                                .anyMatch(a -> authorId.equals(a.getId()))))
+                .filter(b -> available == null || !available
+                        || (b.getAvailableCopies() != null && b.getAvailableCopies() > 0))
+                .map(this::toDto)
+                .collect(Collectors.toList());
+    }
+
     public BookResponseDto getById(UUID id) {
         return dbClient.findBookById(id)
                 .map(this::toDto)
