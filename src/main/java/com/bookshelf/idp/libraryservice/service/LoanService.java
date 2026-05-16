@@ -44,7 +44,7 @@ public class LoanService {
         LoanModel saved = dbClient.saveLoan(loan);
 
         notificationService.sendNotification(
-                user.getId(),
+                user.getEmail(),
                 "LOAN_CONFIRMED",
                 "Your loan for '" + book.getTitle() + "' has been confirmed. Due date: " + loan.getDueDate(),
                 book.getId()
@@ -72,7 +72,7 @@ public class LoanService {
                     reservation.setStatus(ReservationStatus.FULFILLED);
                     dbClient.updateReservation(reservation.getId(), reservation);
                     notificationService.sendNotification(
-                            reservation.getUser().getId(),
+                            reservation.getUser().getEmail(),
                             "RESERVATION_AVAILABLE",
                             "The book '" + book.getTitle() + "' you reserved is now available!",
                             book.getId()

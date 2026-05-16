@@ -18,9 +18,9 @@ public class NotificationService {
         this.restTemplate = restTemplate;
     }
 
-    public void sendNotification(UUID userId, String type, String message, UUID bookId) {
+    public void sendNotification(String userEmail, String type, String message, UUID bookId) {
         try {
-            NotificationRequestDto dto = new NotificationRequestDto(userId, type, message, bookId);
+            NotificationRequestDto dto = new NotificationRequestDto(userEmail, type, message, bookId);
             restTemplate.postForObject(notificationServiceUrl + "/api/v1/notifications", dto, Void.class);
         } catch (Exception e) {
             System.out.println("Notification service unavailable: " + e.getMessage());
